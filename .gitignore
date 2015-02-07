@@ -1,0 +1,5 @@
+*.pyc
+staticfiles
+celerybeat-schedule.db
+.project
+.pydevproject
