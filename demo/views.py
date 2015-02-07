@@ -17,7 +17,7 @@ from decimal import Decimal
 def home(request):
     error = request.GET.get("error", "")
     yellow_server = "https://{yellow_server}".format(yellow_server=os.environ["YELLOW_SERVER"])
-    authorize_url = "{yellow_server}/oauth/authorize/".format(yellow_server=yellow_server)
+    authorize_url = "{yellow_server}/o/authorize/".format(yellow_server=yellow_server)
     client_id = os.environ["CLIENT_ID"]
     context = { 'authorize_url' : authorize_url,
                 'client_id' : urllib.quote(client_id) ,
@@ -53,7 +53,7 @@ def request_access_token(yellow_server,
     # reject the request if given a bad Code)
     client_id = os.environ["CLIENT_ID"]
     client_secret = os.environ["CLIENT_SECRET"]
-    access_url = "{yellow_server}/oauth/token/".format(yellow_server=yellow_server)
+    access_url = "{yellow_server}/o/token/".format(yellow_server=yellow_server)
     
     body = { "grant_type" : "authorization_code",
              "code" : authorization_code,
@@ -73,7 +73,7 @@ def request_access_token(yellow_server,
 def refresh_access_token(yellow_server, refresh_token):
     client_id = os.environ["CLIENT_ID"]
     client_secret = os.environ["CLIENT_SECRET"]
-    access_url = "{yellow_server}/oauth/token/".format(yellow_server=yellow_server)
+    access_url = "{yellow_server}/o/token/".format(yellow_server=yellow_server)
 
     # Access token may have expired, try to refresh
     body = { "grant_type" : "refresh_token",
