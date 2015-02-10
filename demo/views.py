@@ -15,6 +15,13 @@ from decimal import Decimal
 
 @require_GET
 def home(request):
+    ''' Simple view that just displays a "Connect your Yellow account" button.
+        This button will redirect the user to a Yellow hosted page to
+        grant access to this application.
+        
+        You'll want something similar. You should redirect to:
+        https://api.yellowpay.co/o/authorize/?state=random_state_string&response_type=code&client_id=YOUR_CLIENT_ID
+    '''
     error = request.GET.get("error", "")
     yellow_server = "https://{yellow_server}".format(yellow_server=os.environ["YELLOW_SERVER"])
     authorize_url = "{yellow_server}/o/authorize/".format(yellow_server=yellow_server)
@@ -26,6 +33,21 @@ def home(request):
 
 @require_GET
 def invoice(request):
+    ''' When you registered your application you provided a 'redirect_uri'
+        This is the URI that the user will get redirected back to after
+        authorizing your application. The redirection will include a
+        'code' query argument which is set with an authorization code
+        you'll use to request an access token (and refresh token) from Yellow.
+        
+        You'll (finally) be able to use this access token to create invoices
+        on behalf of the user. Periodically the access token will expire
+        when this happens you should use the refresh token to request a
+        new access token (you can refresh the access token earlier if you'd
+        like)
+        
+        Both access token and refresh token should be stored securely on your
+        server.'''
+        
     yellow_server = "https://{yellow_server}".format(yellow_server=os.environ["YELLOW_SERVER"])
     
     # -------------------------------------------------------------------------
@@ -43,18 +65,18 @@ def invoice(request):
 
 def request_access_token(yellow_server, 
                          authorization_code):
-    # -------------------------------------------------------------------------
-    # Request access token
-    # -------------------------------------------------------------------------
-    # Authorization code is sent from the Yellow and used to request an access
-    # token. Note that it would be trivial for a hacker to send us a false
-    # Authorization Code - but it wouldn't accomplish much since we will always
-    # request the Access Token directly from the YELLOW_SERVER (Which will
-    # reject the request if given a bad Code)
+    ''' Authorization code is sent from  Yellow and used to request an access
+        token. Note that it would be trivial for a hacker to send a false
+        Authorization Code (e.g., by making a GET request to /invoice/ and
+        provide a 'code' query arg)- but it wouldn't accomplish much since you
+        will always have to request the Access Token directly from the
+        YELLOW_SERVER (Which will reject the request if given a bad Code)
+    '''
     client_id = os.environ["CLIENT_ID"]
     client_secret = os.environ["CLIENT_SECRET"]
     access_url = "{yellow_server}/o/token/".format(yellow_server=yellow_server)
     
+    # Access token is requested via POST with the following payload:
     body = { "grant_type" : "authorization_code",
              "code" : authorization_code,
              "redirect_uri" : "{root_url}/invoice/".format(root_url=os.environ["ROOT_URL"]),
@@ -104,6 +126,7 @@ def create_invoice(yellow_server,
           
     body = json.dumps(payload)
       
+    # 'Bearer' authentication using the access token as credentials
     headers = {'content-type': 'application/json',
                'Authorization': "Bearer %s" % access_token}
     
@@ -126,23 +149,22 @@ def create_invoice(yellow_server,
         return redirect("/?error=%s" % r.text)
 
 def get_signature(url, body, nonce):
-    ''' To secure communication between merchant server and Yellow server we
+    ''' To secure communication from Yellow server to your server we
         use a form of HMAC authentication.
         (http://en.wikipedia.org/wiki/Hash-based_message_authentication_code)
          
-        When submitting a request to Yellow 3 additional header elements are
-        needed:
-        API-Key: your public API key, you can get this from your merchant
-                 dashboard
+        When submitting a request 3 additional header elements are included:
+        API-Key: your public Client ID, you received this when registering
+                 your application
         API-Nonce: an ever-increasing number that is different for each request
                    (e.g., current UNIX time in milliseconds)
-        API-Sign: an HMAC hash signed with your API secret and converted to
+        API-Sign: an HMAC hash signed with your Client secret and converted to
                   hexadecimal. The message to be hahed and signed is the
                   concatenation of the nonce, fully-qualified request URL,
                   and any request parameters.
                         
-        This allows us to authenticate the request as coming from you,
-        prevents anyone else from modifying or replaying your request, and
+        This allows you to authenticate the request as coming from us,
+        prevents anyone else from modifying or replaying the request, and
         ensures your secret key is never exposed (even in a Heartbleed-type
         scenario where the SSL layer itself is compromised).
         '''
