@@ -12,6 +12,24 @@
     <div class="site-wrapper">
       <div class="site-wrapper-inner">
         <div class="cover-container">
+          
+          <div class="blurb">
+          <p>This is a demo application for <a href='https://yellowpay.co'>Yellow</a>
+          payments. It demonstrates how a 3rd party application can request
+          authorization, via OAuth, to create and monitor invoices on behalf
+          of a merchant. 
+          
+          <p>No OAuth credentials will be stored on the server so you will need
+          to grant the application access each time you use the site.
+          
+          <p>The full source of the application can be found on
+          <a href='https://github.com/YellowPay/yellowdemo-oauth'>GitHub</a>.
+          
+          <p>For more information on Yellow check us out at <a href='https://yellowpay.co'>yellowpay.co</a>
+          
+          <p>For more information on Bitcoin: <a href='https://shubitcoin.com'>ShuBitcoin</a>
+          </div>
+          
           <div class="inner cover">
             <a class="btn btn-lg btn-primary" href="{{ authorize_url }}?state=random_state_string&response_type=code&client_id={{ client_id }}">Connect your Yellow account</a>
           
@@ -25,7 +43,7 @@
 
           <div class="mastfoot">
             <div class="inner">
-              <p>Demo powered by  <a href="https://yellowpay.co">Yellow</a></p>
+              <p>Demo powered by  <a href="https://yellowpay.co"><img id="yellow-logo" src="{% static "demo/img/yellow-logo-bl-32.png" %}"></a></p>
             </div>
           </div>
 
