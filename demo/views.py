@@ -20,11 +20,11 @@ def home(request):
         grant access to this application.
         
         You'll want something similar. You should redirect to:
-        https://api.yellowpay.co/o/authorize/?state=random_state_string&response_type=code&client_id=YOUR_CLIENT_ID
+        https://merchant.yellowpay.co/o/authorize/?state=random_state_string&response_type=code&client_id=YOUR_CLIENT_ID
     '''
     error = request.GET.get("error", "")
-    yellow_server = "https://{yellow_server}".format(yellow_server=os.environ["YELLOW_SERVER"])
-    authorize_url = "{yellow_server}/o/authorize/".format(yellow_server=yellow_server)
+    # e.g. https://merchant.yellowpay.co/o/authorize/
+    authorize_url = os.environ["AUTHORIZE_URL"]
     client_id = os.environ["CLIENT_ID"]
     context = { 'authorize_url' : authorize_url,
                 'client_id' : urllib.quote(client_id) ,
@@ -48,33 +48,30 @@ def invoice(request):
         Both access token and refresh token should be stored securely on your
         server.'''
         
-    yellow_server = "https://{yellow_server}".format(yellow_server=os.environ["YELLOW_SERVER"])
-    
     # -------------------------------------------------------------------------
     # Request access token
     # -------------------------------------------------------------------------
     authorization_code = request.GET.get("code", None)
-    access_token, refresh_token = request_access_token(yellow_server,
-                                                       authorization_code)
+    access_token, refresh_token = request_access_token(authorization_code)
     
     # -------------------------------------------------------------------------
     # Create invoice
     # -------------------------------------------------------------------------
-    return create_invoice(yellow_server, access_token, refresh_token)
+    return create_invoice(access_token, refresh_token)
 
 
-def request_access_token(yellow_server, 
-                         authorization_code):
+def request_access_token(authorization_code):
     ''' Authorization code is sent from  Yellow and used to request an access
         token. Note that it would be trivial for a hacker to send a false
         Authorization Code (e.g., by making a GET request to /invoice/ and
         provide a 'code' query arg)- but it wouldn't accomplish much since you
         will always have to request the Access Token directly from the
-        YELLOW_SERVER (Which will reject the request if given a bad Code)
+        Yellow server (Which will reject the request if given a bad Code)
     '''
     client_id = os.environ["CLIENT_ID"]
     client_secret = os.environ["CLIENT_SECRET"]
-    access_url = "{yellow_server}/o/token/".format(yellow_server=yellow_server)
+    # e.g. https://merchant.yellowpay.co/o/token/
+    access_url = os.environ["TOKEN_URL"]
     
     # Access token is requested via POST with the following payload:
     body = { "grant_type" : "authorization_code",
@@ -82,8 +79,7 @@ def request_access_token(yellow_server,
              "redirect_uri" : "{root_url}/invoice/".format(root_url=os.environ["ROOT_URL"]),
              "client_id" : client_id }
     # OAuth2 uses basic authentication so it's extra important that any
-    # communication with the Yellow server happens over SSL. You'll see above
-    # that 'yellow_server' and 'access_url' are forced to HTTPS.
+    # communication with the Yellow server happens over SSL.
     r = requests.post(access_url,
                       auth=requests.auth.HTTPBasicAuth(client_id, client_secret),
                       data=body,
@@ -92,17 +88,17 @@ def request_access_token(yellow_server,
     
     return data['access_token'],  data['refresh_token']
 
-def refresh_access_token(yellow_server, refresh_token):
+def refresh_access_token(refresh_token):
     client_id = os.environ["CLIENT_ID"]
     client_secret = os.environ["CLIENT_SECRET"]
-    access_url = "{yellow_server}/o/token/".format(yellow_server=yellow_server)
+    # e.g. https://merchant.yellowpay.co/o/token/
+    access_url = os.environ["TOKEN_URL"]
 
     # Access token may have expired, try to refresh
     body = { "grant_type" : "refresh_token",
              "refresh_token" : refresh_token }
     # OAuth2 uses basic authentication so it's extra important that any
-    # communication with the Yellow server happens over SSL. You'll see above
-    # that 'yellow_server' and 'access_url' are forced to HTTPS.
+    # communication with the Yellow server happens over SSL.
     r = requests.post(access_url,
                       auth=requests.auth.HTTPBasicAuth(client_id, client_secret),
                       data=body,
@@ -111,13 +107,14 @@ def refresh_access_token(yellow_server, refresh_token):
     
     return data['access_token'], data['refresh_token']
         
-def create_invoice(yellow_server,
-                   access_token,
+def create_invoice(access_token,
                    refresh_token):
     # -------------------------------------------------------------------------
     # Create invoice
     # -------------------------------------------------------------------------
-    invoice_url = "{yellow_server}/api/invoice/".format(yellow_server=yellow_server)
+    # e.g., https://api.yellowpay.co
+    api_server = os.environ["API_SERVER"]
+    invoice_url = "{api_server}/v1/invoice/".format(api_server=api_server)
     # POST /api/invoice/ expects a base price, currency, and optional callback. 
     # ROOT_URL should refer to a server you control
     payload= { 'base_price' : "0.30", 
@@ -143,8 +140,8 @@ def create_invoice(yellow_server,
         data = r.json()
         return redirect(data['url'])
     elif 403 == r.status_code:
-        access_token, refresh_token = refresh_access_token(yellow_server, refresh_token)
-        return create_invoice(yellow_server, access_token, refresh_token)
+        access_token, refresh_token = refresh_access_token(refresh_token)
+        return create_invoice(access_token, refresh_token)
     else:
         return redirect("/?error=%s" % r.text)
 
