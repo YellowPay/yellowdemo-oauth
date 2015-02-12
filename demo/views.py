@@ -47,7 +47,9 @@ def invoice(request):
         
         Both access token and refresh token should be stored securely on your
         server.'''
-        
+    error = request.GET.get("error", None)
+    if error:
+        return redirect("/?error=%s" % error)
     # -------------------------------------------------------------------------
     # Request access token
     # -------------------------------------------------------------------------
