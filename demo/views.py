@@ -11,6 +11,7 @@ import time
 import base64
 import hashlib
 import os
+import random
 from decimal import Decimal
 
 @require_GET
@@ -20,14 +21,18 @@ def home(request):
         grant access to this application.
         
         You'll want something similar. You should redirect to:
-        https://merchant.yellowpay.co/o/authorize/?state=random_state_string&response_type=code&client_id=YOUR_CLIENT_ID
+        https://merchant.yellowpay.co/o/authorize/?state=random_state_string&response_type=code&client_id=YOUR_CLIENT_ID&scope=SPACE_DELIMITED_SCOPES
+        
+        Leave out the 'scope' argument to request all scopes.
     '''
     error = request.GET.get("error", "")
-    # e.g. https://merchant.yellowpay.co/o/authorize/
-    authorize_url = os.environ["AUTHORIZE_URL"]
+    authorize_url = os.environ.get("AUTHORIZE_URL", "https://merchant.yellowpay.co/o/authorize/")
     client_id = os.environ["CLIENT_ID"]
+    # You can also leave off the 'scopes' argument to request all scopes
+    scopes = "read_invoice write_invoice read_profile"
     context = { 'authorize_url' : authorize_url,
                 'client_id' : urllib.quote(client_id) ,
+                'scopes' : urllib.quote(scopes),
                 'error' : error }
     return render_to_response('demo/home.html', context)
 
@@ -72,13 +77,14 @@ def request_access_token(authorization_code):
     '''
     client_id = os.environ["CLIENT_ID"]
     client_secret = os.environ["CLIENT_SECRET"]
-    # e.g. https://merchant.yellowpay.co/o/token/
-    access_url = os.environ["TOKEN_URL"]
+    access_url = os.environ.get("TOKEN_URL", "https://merchant.yellowpay.co/o/token/")
+    # ROOT_URL should be set to your server's domain (including http:// or https://)
+    root_url = os.environ.get("ROOT_URL", "https://yellow-demo-oauth.herokuapp.com")
     
     # Access token is requested via POST with the following payload:
     body = { "grant_type" : "authorization_code",
              "code" : authorization_code,
-             "redirect_uri" : "{root_url}/invoice/".format(root_url=os.environ["ROOT_URL"]),
+             "redirect_uri" : "{root_url}/invoice/".format(root_url=root_url),
              "client_id" : client_id }
     # OAuth2 uses basic authentication so it's extra important that any
     # communication with the Yellow server happens over SSL.
@@ -93,8 +99,7 @@ def request_access_token(authorization_code):
 def refresh_access_token(refresh_token):
     client_id = os.environ["CLIENT_ID"]
     client_secret = os.environ["CLIENT_SECRET"]
-    # e.g. https://merchant.yellowpay.co/o/token/
-    access_url = os.environ["TOKEN_URL"]
+    access_url = os.environ.get("TOKEN_URL", "https://merchant.yellowpay.co/o/token/")
 
     # Access token may have expired, try to refresh
     body = { "grant_type" : "refresh_token",
@@ -114,14 +119,15 @@ def create_invoice(access_token,
     # -------------------------------------------------------------------------
     # Create invoice
     # -------------------------------------------------------------------------
-    # e.g., https://api.yellowpay.co
-    api_server = os.environ["API_SERVER"]
+    api_server = os.environ.get("API_SERVER", "https://api.yellowpay.co")
     invoice_url = "{api_server}/v1/invoice/".format(api_server=api_server)
+    profile_url = "{api_server}/v1/profile/".format(api_server=api_server)
     # POST /api/invoice/ expects a base price, currency, and optional callback. 
     # ROOT_URL should refer to a server you control
+    root_url = os.environ.get("ROOT_URL", "https://yellow-demo-oauth.herokuapp.com")
     payload= { 'base_price' : "0.30", 
                'base_ccy' : "USD",
-               'callback' : "{host}/ipn/".format(host=os.environ["ROOT_URL"])}
+               'callback' : "{host}/ipn/".format(host=root_url)}
           
     body = json.dumps(payload)
       
@@ -129,19 +135,33 @@ def create_invoice(access_token,
     headers = {'content-type': 'application/json',
                'Authorization': "Bearer %s" % access_token}
     
+    r = requests.get(profile_url,
+                     headers=headers,
+                     verify=True)
+    profile = r.json()
+    
     # POST the request
     r = requests.post(invoice_url,
                       data=body,
                       headers=headers,
                       verify=True)
+    data = r.json()
+    
     if 200 == r.status_code:
-        # At this point the demo just redirects to the invoice widget. A
+        # At this point the demo just renders the invoice via an iframe. A
         # non-demo site might instead embed the invoice in a shopping cart and
         # also open a order in an Order Management System and attach the
         # returned invoice id.
-        data = r.json()
-        return redirect(data['url'])
-    elif 403 == r.status_code:
+        context = { 'url' : data['url'],
+                    'company_name' : profile['company_name'] }
+        return render_to_response('demo/invoice.html', context)
+    elif (403 == r.status_code and
+          data['detail'] == "Authentication credentials were not provided."):
+        # a 403 status code is returned for both an expired access token and
+        # insufficient permissions (e.g. you only requested the 'query' scope
+        # but attempted to 'create' an invoice). To distinguish between those
+        # two types of authentication failure, you can check the response
+        # 'detail' string.
         access_token, refresh_token = refresh_access_token(refresh_token)
         return create_invoice(access_token, refresh_token)
     else:
@@ -222,7 +242,9 @@ def ipn(request):
  
     # the URL in this case is the merchant IPN URL registered with
     # Yellow when the invoice was created
-    url = "{host}/ipn/".format(host=os.environ["ROOT_URL"])
+    # ROOT_URL should refer to a server you control
+    root_url = os.environ.get("ROOT_URL", "https://yellow-demo-oauth.herokuapp.com")
+    url = "{host}/ipn/".format(host=root_url)
  
     test_signature = get_signature(url, body, nonce)
  
